@@ -7,7 +7,7 @@ A lightweight numpy-based implementation of `einops.rearrange`, using `lark` for
 - Fully numpy compatible
 - Custom pattern parser using Lark grammar (no regex hacks)
 - Simple, composable API mimicking einops
-- **No backpropagation** — this is not meant for training pipelines
+- **No backpropagation** — this is not meant for training pipelines (The original one supports backpropagating through einops operations https://einops.rocks/2-einops-for-deep-learning/)
 - **Not built on PyTorch** — this is pure numpy, so use only for static reshaping tasks
 
 ## Usage
@@ -31,13 +31,28 @@ x = np.random.rand(2, 3, 4, 5)
 print("Ellipsis:", rearranger.rearrange(x, '... h w -> ... (h w)').shape)  # (2, 3, 20)
 ```
 
-Design Decisions
+Design Decisions & How It Evolved
 
-- Used Lark parser instead of string manipulation to support nested and grouped axes cleanly
-- Retained group parsing like (h w) as tuples internally for flexible manipulation
-- Flattening logic is recursive and handles nested groups properly
-- Ellipsis is expanded by calculating missing dimensions and assigning placeholder axis names
-- Explicit axis lengths (like h=3) are passed via kwargs and auto-resolve shape inference
-- Pattern errors (missing axes or mismatch in dimensions) raise clear exceptions
-- Focused only on static numpy reshaping — no support for backprop currently
+- Started with a Lark-based parser (Initial research into how to write parser led to this decision of using a parsing library as describing the grammar would be simpler and more elegant way for this than writing the logic from scratch, I.e instead of string splits or regex to handle complex nested patterns like (h w) cleanly and future-proof the parser logic)
 
+- Defined a minimal custom grammar to parse einops-style patterns ("a b (c d) -> (a c) b d") with support for ..., groups, and regular axis names.
+
+- Wrote a Lark Transformer that converts the parsed pattern into Python lists and tuples, so everything is structured before actual tensor logic kicks in.
+
+- Implemented the rearrange() method step-by-step:
+
+    - First version handled basic flattening and reshaping using axis name mapping.
+
+    - Later added group splitting, group merging, and ellipsis support.
+
+- Ellipsis support was added by detecting how many unspecified dims are left and mapping them under '...'.
+
+- Added inference logic for cases where only one dimension in a group is unknown, e.g., in (h w), if h=3 and shape is 12, then w=4.
+
+- Handled '1' as a special axis for inserting size-1 dims, useful for broadcasting/repeat-style logic.
+
+- Added transpose step that only kicks in if input/output axis names match but in different orders.
+
+- Cleanly separated logic the reshaping transposing operations into separate methods to make each step focused and testable.
+
+- Added a debug flag, so internal print statements can be toggled easily without cluttering normal usage.
